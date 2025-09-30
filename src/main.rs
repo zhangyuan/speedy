@@ -38,7 +38,7 @@ impl eframe::App for SpeedyApp {
         ctx.request_repaint_after(self.update_interval);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("🚀 Speedy - Network Speed Monitor");
+            ui.heading("Speedy - Network Speed Monitor");
             ui.separator();
 
             // Controls
@@ -52,7 +52,7 @@ impl eframe::App for SpeedyApp {
 
             // Show network interfaces
             if self.network_stats.is_empty() {
-                ui.label("🔍 Scanning for network interfaces...");
+                ui.label("Scanning for network interfaces...");
             } else {
                 self.show_network_interfaces(ui);
             }
@@ -80,13 +80,13 @@ impl SpeedyApp {
                             Color32::from_rgb(128, 128, 128)
                         };
 
-                        let status_text = if stats.is_active { "●" } else { "○" };
-                        ui.label(RichText::new(status_text).color(status_color).size(20.0));
+                        let status_text = if stats.is_active { "[ON]" } else { "[OFF]" };
+                        ui.label(RichText::new(status_text).color(status_color).size(14.0).strong());
                         
                         ui.label(RichText::new(&stats.name).strong().size(16.0));
                         
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(format!("Total: ↓{} ↑{}", 
+                            ui.label(format!("Total: Down:{} Up:{}", 
                                 format_total_bytes(stats.bytes_received),
                                 format_total_bytes(stats.bytes_transmitted)
                             ));
@@ -100,7 +100,7 @@ impl SpeedyApp {
                         // Download speed
                         ui.group(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(RichText::new("📥 Download").color(Color32::from_rgb(100, 150, 255)));
+                                ui.label(RichText::new("Download").color(Color32::from_rgb(100, 150, 255)));
                                 let speed_text = format_bytes(stats.download_speed);
                                 let speed_color = if stats.download_speed > 1024.0 * 1024.0 { // > 1 MB/s
                                     Color32::from_rgb(0, 255, 0)
@@ -118,7 +118,7 @@ impl SpeedyApp {
                         // Upload speed
                         ui.group(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(RichText::new("📤 Upload").color(Color32::from_rgb(255, 150, 100)));
+                                ui.label(RichText::new("Upload").color(Color32::from_rgb(255, 150, 100)));
                                 let speed_text = format_bytes(stats.upload_speed);
                                 let speed_color = if stats.upload_speed > 1024.0 * 1024.0 { // > 1 MB/s
                                     Color32::from_rgb(0, 255, 0)
