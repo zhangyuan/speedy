@@ -1,4 +1,4 @@
-use sysinfo;
+use sysinfo::Networks;
 use std::collections::HashMap;
 use std::time::Instant;
 
@@ -13,17 +13,20 @@ pub struct NetworkStats {
 }
 
 pub struct NetworkMonitor {
-    networks: sysinfo::Networks,
+    networks: Networks,
     previous_stats: HashMap<String, (u64, u64, Instant)>, // interface -> (rx, tx, timestamp)
+    linux_totals: HashMap<String, (u64, u64)>, // interface -> (total_rx, total_tx) from /proc/net/dev
 }
 
 impl NetworkMonitor {
     pub fn new() -> Self {
-        let networks = sysinfo::Networks::new_with_refreshed_list();
+        // Create networks instance and refresh to get initial data
+        let networks = Networks::new_with_refreshed_list();
         
         Self {
             networks,
             previous_stats: HashMap::new(),
+            linux_totals: HashMap::new(),
         }
     }
 
@@ -32,9 +35,33 @@ impl NetworkMonitor {
         let current_time = Instant::now();
         let mut stats = Vec::new();
 
+        // On Linux, try to get true totals from /proc/net/dev
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok(proc_stats) = crate::network_linux::read_proc_net_dev() {
+                self.linux_totals.clear();
+                for stat in proc_stats {
+                    self.linux_totals.insert(stat.name.clone(), (stat.bytes_received, stat.bytes_transmitted));
+                }
+            }
+        }
+
         for (interface_name, network) in &self.networks {
-            let current_rx = network.received();
-            let current_tx = network.transmitted();
+            // Use Linux totals if available, otherwise fall back to sysinfo
+            let (current_rx, current_tx) = {
+                #[cfg(target_os = "linux")]
+                {
+                    if let Some((linux_rx, linux_tx)) = self.linux_totals.get(interface_name) {
+                        (*linux_rx, *linux_tx)
+                    } else {
+                        (network.received(), network.transmitted())
+                    }
+                }
+                #[cfg(not(target_os = "linux"))]
+                {
+                    (network.received(), network.transmitted())
+                }
+            };
             
             let (download_speed, upload_speed) = if let Some((prev_rx, prev_tx, prev_time)) = 
                 self.previous_stats.get(interface_name) {

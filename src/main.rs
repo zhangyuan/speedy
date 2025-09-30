@@ -1,4 +1,6 @@
 mod network_monitor;
+#[cfg(target_os = "linux")]
+mod network_linux;
 
 use eframe::egui;
 use network_monitor::{NetworkMonitor, NetworkStats, format_bytes, format_total_bytes};
