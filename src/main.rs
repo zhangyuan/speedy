@@ -48,9 +48,6 @@ impl eframe::App for SpeedyApp {
         ctx.request_repaint_after(self.update_interval);
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Speedy - Network Speed Monitor");
-            ui.separator();
-
             // Controls
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.show_inactive, "Show inactive interfaces");
