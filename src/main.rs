@@ -12,6 +12,8 @@ struct SpeedyApp {
     last_update: Instant,
     update_interval: Duration,
     show_inactive: bool,
+    always_on_top: bool,
+    first_frame: bool,
 }
 
 impl Default for SpeedyApp {
@@ -22,12 +24,20 @@ impl Default for SpeedyApp {
             last_update: Instant::now(),
             update_interval: Duration::from_secs(1),
             show_inactive: false,
+            always_on_top: true,
+            first_frame: true,
         }
     }
 }
 
 impl eframe::App for SpeedyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply always-on-top on first frame (since builder settings don't work reliably)
+        if self.first_frame && self.always_on_top {
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
+            self.first_frame = false;
+        }
+
         // Update network stats periodically
         if self.last_update.elapsed() >= self.update_interval {
             self.network_stats = self.network_monitor.refresh();
@@ -44,6 +54,17 @@ impl eframe::App for SpeedyApp {
             // Controls
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.show_inactive, "Show inactive interfaces");
+                ui.separator();
+                if ui.checkbox(&mut self.always_on_top, "Always on top").changed() {
+                    // Try to update always-on-top behavior
+                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                        if self.always_on_top {
+                            egui::WindowLevel::AlwaysOnTop
+                        } else {
+                            egui::WindowLevel::Normal
+                        }
+                    ));
+                }
                 ui.separator();
                 ui.label(format!("Total interfaces: {}", self.network_stats.len()));
             });
@@ -144,6 +165,8 @@ fn main() -> Result<(), eframe::Error> {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([450.0, 300.0])
             .with_min_inner_size([350.0, 250.0])
+            .with_always_on_top()
+            .with_window_level(egui::WindowLevel::AlwaysOnTop)
             .with_icon(eframe::icon_data::from_png_bytes(&[]).unwrap_or_default()),
         ..Default::default()
     };
