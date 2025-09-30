@@ -142,8 +142,8 @@ impl SpeedyApp {
 fn main() -> Result<(), eframe::Error> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([600.0, 500.0])
-            .with_min_inner_size([400.0, 300.0])
+            .with_inner_size([450.0, 300.0])
+            .with_min_inner_size([350.0, 250.0])
             .with_icon(eframe::icon_data::from_png_bytes(&[]).unwrap_or_default()),
         ..Default::default()
     };
