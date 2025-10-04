@@ -1,6 +1,8 @@
 mod network_monitor;
 #[cfg(target_os = "linux")]
 mod network_linux;
+#[cfg(target_os = "windows")]
+mod network_windows;
 
 use eframe::egui;
 use network_monitor::{NetworkMonitor, NetworkStats, format_bytes, format_total_bytes};
@@ -12,6 +14,7 @@ struct SpeedyApp {
     last_update: Instant,
     update_interval: Duration,
     show_inactive: bool,
+    show_virtual: bool,
     always_on_top: bool,
     first_frame: bool,
 }
@@ -24,6 +27,7 @@ impl Default for SpeedyApp {
             last_update: Instant::now(),
             update_interval: Duration::from_secs(1),
             show_inactive: false,
+            show_virtual: false,
             always_on_top: true,
             first_frame: true,
         }
@@ -40,7 +44,7 @@ impl eframe::App for SpeedyApp {
 
         // Update network stats periodically
         if self.last_update.elapsed() >= self.update_interval {
-            self.network_stats = self.network_monitor.refresh();
+            self.network_stats = self.network_monitor.refresh(self.show_virtual);
             self.last_update = Instant::now();
         }
 
@@ -51,6 +55,7 @@ impl eframe::App for SpeedyApp {
             // Controls
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.show_inactive, "Show inactive interfaces");
+                ui.checkbox(&mut self.show_virtual, "Show virtual adapters");
                 ui.separator();
                 if ui.checkbox(&mut self.always_on_top, "Always on top").changed() {
                     // Try to update always-on-top behavior
@@ -118,14 +123,14 @@ impl SpeedyApp {
                         // Download speed
                         ui.group(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(RichText::new("Download").color(Color32::from_rgb(100, 150, 255)));
+                                ui.label(RichText::new("Download").color(Color32::from_rgb(20, 100, 200)));
                                 let speed_text = format_bytes(stats.download_speed);
                                 let speed_color = if stats.download_speed > 1024.0 * 1024.0 { // > 1 MB/s
-                                    Color32::from_rgb(0, 255, 0)
+                                    Color32::from_rgb(0, 200, 0)  // 深绿色，在浅色背景下清晰
                                 } else if stats.download_speed > 1024.0 { // > 1 KB/s
-                                    Color32::from_rgb(255, 255, 0)
+                                    Color32::from_rgb(200, 150, 0)  // 深黄色，在浅色背景下清晰
                                 } else {
-                                    Color32::WHITE
+                                    Color32::from_rgb(80, 80, 80)  // 深灰色，替代白色
                                 };
                                 ui.label(RichText::new(speed_text).color(speed_color).size(18.0).strong());
                             });
@@ -136,14 +141,14 @@ impl SpeedyApp {
                         // Upload speed
                         ui.group(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(RichText::new("Upload").color(Color32::from_rgb(255, 150, 100)));
+                                ui.label(RichText::new("Upload").color(Color32::from_rgb(200, 100, 20)));
                                 let speed_text = format_bytes(stats.upload_speed);
                                 let speed_color = if stats.upload_speed > 1024.0 * 1024.0 { // > 1 MB/s
-                                    Color32::from_rgb(0, 255, 0)
+                                    Color32::from_rgb(0, 200, 0)  // 深绿色，在浅色背景下清晰
                                 } else if stats.upload_speed > 1024.0 { // > 1 KB/s
-                                    Color32::from_rgb(255, 255, 0)
+                                    Color32::from_rgb(200, 150, 0)  // 深黄色，在浅色背景下清晰
                                 } else {
-                                    Color32::WHITE
+                                    Color32::from_rgb(80, 80, 80)  // 深灰色，替代白色
                                 };
                                 ui.label(RichText::new(speed_text).color(speed_color).size(18.0).strong());
                             });
@@ -165,13 +170,45 @@ fn main() -> Result<(), eframe::Error> {
             .with_always_on_top()
             .with_window_level(egui::WindowLevel::AlwaysOnTop)
             .with_icon(eframe::icon_data::from_png_bytes(&[]).unwrap_or_default()),
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
 
     eframe::run_native(
         "Speedy - Network Speed Monitor",
         options,
-        Box::new(|_cc| {
+        Box::new(|cc| {
+            // Load Chinese fonts for better character support
+            let mut fonts = egui::FontDefinitions::default();
+            
+            // Add system fonts that support Chinese characters
+            #[cfg(target_os = "windows")]
+            {
+                // Try to load system fonts that support Chinese
+                if let Ok(font_data) = std::fs::read("C:\\Windows\\Fonts\\msyh.ttc") {
+                    fonts.font_data.insert(
+                        "Microsoft YaHei".to_owned(),
+                        egui::FontData::from_owned(font_data).into(),
+                    );
+                    
+                    // Set as primary font for better Chinese support
+                    fonts.families.get_mut(&egui::FontFamily::Proportional)
+                        .unwrap()
+                        .insert(0, "Microsoft YaHei".to_owned());
+                } else if let Ok(font_data) = std::fs::read("C:\\Windows\\Fonts\\simhei.ttf") {
+                    fonts.font_data.insert(
+                        "SimHei".to_owned(),
+                        egui::FontData::from_owned(font_data).into(),
+                    );
+                    
+                    fonts.families.get_mut(&egui::FontFamily::Proportional)
+                        .unwrap()
+                        .insert(0, "SimHei".to_owned());
+                }
+            }
+            
+            cc.egui_ctx.set_fonts(fonts);
+            
             Ok(Box::<SpeedyApp>::default())
         }),
     )
