@@ -7,11 +7,10 @@ edition = "2021"
 sysinfo = "0.30"
 egui = "0.32"
 
-[target.'cfg(not(windows))'.dependencies]
-eframe = { version = "0.32", default-features = false, features = ["glow", "default_fonts"] }
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+eframe = { version = "0.32", default-features = false, features = ["glow", "default_fonts", "x11", "wayland"] }
 
-
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 eframe = { version = "0.32", default-features = false, features = ["wgpu", "default_fonts"] }
 wgpu = { version = "25.0", features = ["dx12", "vulkan"] }
 windows = { version = "0.58", features = [
