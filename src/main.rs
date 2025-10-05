@@ -178,7 +178,10 @@ fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|cc| {
             // Load Chinese fonts for better character support
+            #[cfg(target_os = "windows")]
             let mut fonts = egui::FontDefinitions::default();
+            #[cfg(not(target_os = "windows"))]
+            let fonts = egui::FontDefinitions::default();
             
             // Add system fonts that support Chinese characters
             #[cfg(target_os = "windows")]
