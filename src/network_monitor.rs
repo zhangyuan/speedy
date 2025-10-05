@@ -119,6 +119,24 @@ impl NetworkMonitor {
 
 
         for (interface_name, network) in &self.networks {
+            // Filter virtual interfaces on non-Windows platforms if show_virtual is false
+            #[cfg(not(target_os = "windows"))]
+            {
+                if !show_virtual {
+                    // Skip common virtual interfaces on Linux
+                    if interface_name.starts_with("virbr") ||    // libvirt bridges
+                       interface_name.starts_with("docker") ||   // Docker interfaces
+                       interface_name.starts_with("veth") ||     // Virtual ethernet
+                       interface_name.starts_with("br-") ||      // Bridge interfaces
+                       interface_name.starts_with("tun") ||      // TUN interfaces
+                       interface_name.starts_with("tap") ||      // TAP interfaces
+                       interface_name.contains("wg") ||          // WireGuard
+                       interface_name == "lo" {                  // Loopback
+                        continue;
+                    }
+                }
+            }
+            
             // Use platform-specific totals if available, otherwise fall back to sysinfo
             let (current_rx, current_tx) = {
                 #[cfg(target_os = "linux")]

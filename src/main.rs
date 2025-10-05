@@ -170,7 +170,6 @@ fn main() -> Result<(), eframe::Error> {
             .with_always_on_top()
             .with_window_level(egui::WindowLevel::AlwaysOnTop)
             .with_icon(eframe::icon_data::from_png_bytes(&[]).unwrap_or_default()),
-        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
 
@@ -179,7 +178,7 @@ fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|cc| {
             // Load Chinese fonts for better character support
-            let mut fonts = egui::FontDefinitions::default();
+            let fonts = egui::FontDefinitions::default();
             
             // Add system fonts that support Chinese characters
             #[cfg(target_os = "windows")]
