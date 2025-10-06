@@ -3,6 +3,8 @@ mod network_monitor;
 use eframe::egui;
 use network_monitor::{NetworkMonitor, NetworkStats, format_bytes, format_total_bytes};
 use std::time::{Duration, Instant};
+use std::cmp::Ordering;
+const STORAGE_KEY: &str = "speedy.sort_mode";
 
 struct SpeedyApp {
     network_monitor: NetworkMonitor,
@@ -11,6 +13,8 @@ struct SpeedyApp {
     update_interval: Duration,
     always_on_top: bool,
     first_frame: bool,
+    sort_mode: SortMode,
+    search_query: String,
 }
 
 impl Default for SpeedyApp {
@@ -22,8 +26,16 @@ impl Default for SpeedyApp {
             update_interval: Duration::from_secs(1),
             always_on_top: true,
             first_frame: true,
+            sort_mode: SortMode::Name,
+            search_query: String::new(),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SortMode {
+    Name,
+    Download,
 }
 
 impl eframe::App for SpeedyApp {
@@ -48,6 +60,17 @@ impl eframe::App for SpeedyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // Controls
             ui.horizontal(|ui| {
+                ui.separator();
+                ui.label("Search:");
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.search_query)
+                        .hint_text("Filter by name")
+                        .desired_width(80.0), // ~10 ASCII chars
+                );
+                ui.separator();
+                ui.label("Sort:");
+                ui.selectable_value(&mut self.sort_mode, SortMode::Name, "Name");
+                ui.selectable_value(&mut self.sort_mode, SortMode::Download, "Download");
                 ui.separator();
                 if ui
                     .checkbox(&mut self.always_on_top, "Always on top")
@@ -76,6 +99,14 @@ impl eframe::App for SpeedyApp {
             }
         });
     }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        let s = match self.sort_mode {
+            SortMode::Name => "Name",
+            SortMode::Download => "Download",
+        };
+        storage.set_string(STORAGE_KEY, s.to_string());
+    }
 }
 
 impl SpeedyApp {
@@ -94,7 +125,41 @@ impl SpeedyApp {
         };
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for stats in &self.network_stats {
+            // Sort interfaces according to user's choice. We create a vector
+            // of (index, &NetworkStats) so we can use the original index as
+            // a stable tiebreaker.
+            let mut indexed: Vec<(usize, &network_monitor::NetworkStats)> =
+                self.network_stats.iter().enumerate().collect();
+
+            // Apply search filter (case-insensitive) before sorting
+            let query = self.search_query.to_lowercase();
+            if !query.is_empty() {
+                indexed.retain(|(_i, s)| s.name.to_lowercase().contains(&query));
+            }
+
+            match self.sort_mode {
+                SortMode::Name => indexed.sort_by(|(i, a), (j, b)| {
+                    let ord = a.name.to_lowercase().cmp(&b.name.to_lowercase());
+                    if ord != Ordering::Equal {
+                        ord
+                    } else {
+                        i.cmp(j)
+                    }
+                }),
+                SortMode::Download => indexed.sort_by(|(i, a), (j, b)| {
+                    // Descending by download_speed
+                    match b
+                        .download_speed
+                        .partial_cmp(&a.download_speed)
+                        .unwrap_or(Ordering::Equal)
+                    {
+                        Ordering::Equal => i.cmp(j),
+                        other => other,
+                    }
+                }),
+            }
+
+            for (_idx, stats) in indexed {
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         // Interface name
@@ -122,11 +187,14 @@ impl SpeedyApp {
                                 );
                                 let speed_text = format_bytes(stats.download_speed);
                                 let speed_color = speed_color(stats.download_speed);
-                                ui.label(
-                                    RichText::new(speed_text)
-                                        .color(speed_color)
-                                        .size(18.0)
-                                        .strong(),
+                                // Ensure a minimum width so values align between download/upload
+                                const SPEED_MIN_W: f32 = 110.0;
+                                const SPEED_H: f32 = 28.0;
+                                ui.add_sized(
+                                    [SPEED_MIN_W, SPEED_H],
+                                    egui::Label::new(
+                                        RichText::new(speed_text).color(speed_color).size(18.0).strong(),
+                                    ),
                                 );
                             });
                         });
@@ -141,11 +209,14 @@ impl SpeedyApp {
                                 );
                                 let speed_text = format_bytes(stats.upload_speed);
                                 let speed_color = speed_color(stats.upload_speed);
-                                ui.label(
-                                    RichText::new(speed_text)
-                                        .color(speed_color)
-                                        .size(18.0)
-                                        .strong(),
+                                // Ensure the same minimum width as download
+                                const SPEED_MIN_W: f32 = 110.0;
+                                const SPEED_H: f32 = 28.0;
+                                ui.add_sized(
+                                    [SPEED_MIN_W, SPEED_H],
+                                    egui::Label::new(
+                                        RichText::new(speed_text).color(speed_color).size(18.0).strong(),
+                                    ),
                                 );
                             });
                         });
@@ -159,10 +230,38 @@ impl SpeedyApp {
 }
 
 fn main() -> Result<(), eframe::Error> {
+    // Estimate an initial window width based on the top control line (search, sort, labels).
+    // This is a simple heuristic (avg char width * chars + padding) that adapts the
+    // initial size to the UI content so the first line is unlikely to be clipped.
+    fn estimate_initial_width() -> f32 {
+        // Rough average character width in px for typical UI font.
+        const AVG_CHAR_W: f32 = 8.0;
+
+        // Components we display on the first row (approximate character counts):
+        let search_label = "Search:".len();
+        let search_box_chars = 10; // user requested ~10 ASCII chars
+        let sort_label = "Sort:".len();
+        let name_label = "Name".len();
+        let download_label = "Download".len();
+        let always_label = "Always on top".len();
+        let total_label = "Total interfaces: 999".len(); // reserve space for counts
+
+        let char_count = search_label + search_box_chars + sort_label + name_label + download_label + always_label + total_label;
+
+        // Add padding for separators, margins and icon area
+        let padding = 140.0_f32;
+        let width = (char_count as f32) * AVG_CHAR_W + padding;
+
+        // Clamp to reasonable bounds
+        width.clamp(420.0, 1400.0)
+    }
+
+    let initial_width = estimate_initial_width();
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([450.0, 300.0])
-            .with_min_inner_size([350.0, 250.0])
+            .with_inner_size([initial_width, 360.0])
+            .with_min_inner_size([450.0, 300.0])
             .with_always_on_top()
             .with_window_level(egui::WindowLevel::AlwaysOnTop)
             .with_icon(eframe::icon_data::from_png_bytes(&[]).unwrap_or_default()),
@@ -211,7 +310,18 @@ fn main() -> Result<(), eframe::Error> {
 
             cc.egui_ctx.set_fonts(fonts);
 
-            Ok(Box::<SpeedyApp>::default())
+            // Initialize app and restore saved settings (sort mode)
+            let mut app = SpeedyApp::default();
+            if let Some(storage) = &cc.storage {
+                if let Some(val) = storage.get_string(STORAGE_KEY) {
+                    app.sort_mode = match val.as_str() {
+                        "Download" => SortMode::Download,
+                        _ => SortMode::Name,
+                    }
+                }
+            }
+
+            Ok(Box::new(app))
         }),
     )
 }
