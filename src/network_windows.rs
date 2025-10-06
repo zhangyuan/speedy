@@ -28,35 +28,14 @@ pub fn get_network_interface_stats(_show_virtual: bool) -> Result<Vec<WindowsNet
         // 简化的活动检测：有流量即为活跃
         let is_active = bytes_received > 0 || bytes_transmitted > 0;
         
-        // 清理接口名称用于显示
-        let display_name = clean_interface_name(interface_name);
-        
         stats.push(WindowsNetworkStats {
-            name: display_name.clone(),
+            name: interface_name.clone(),
             bytes_received,
             bytes_transmitted,
-            friendly_name: display_name,
+            friendly_name: interface_name.clone(),
             is_active,
         });
     }
     
     Ok(stats)
-}
-
-
-
-
-
-// 清理接口名称用于显示
-fn clean_interface_name(name: &str) -> String {
-    name
-        // 移除常见的技术后缀
-        .replace("-WFP Native MAC Layer LightWeight Filter-0000", "")
-        .replace("-WFP Native MAC Layer LightWeight Filter", "")
-        .replace("-QoS Packet Scheduler-0000", "")
-        .replace("-QoS Packet Scheduler", "")
-        .replace(" - Miniport Adapter", "")
-        .replace(" - Virtual Switch", "")
-        .trim()
-        .to_string()
 }
