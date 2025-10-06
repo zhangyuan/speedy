@@ -1,15 +1,6 @@
-use std::ffi::OsString;
-use std::os::windows::ffi::OsStringExt;
 use std::collections::HashMap;
-use windows::{
-    Win32::Foundation::ERROR_SUCCESS,
-    Win32::NetworkManagement::IpHelper::{
-        GetIfTable2, FreeMibTable, MIB_IF_TABLE2, MIB_IF_ROW2,
-    },
-};
-
-// 使用 netstat2 获取活动连接信息
 use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
+use sysinfo::Networks;
 
 #[derive(Debug, Clone)]
 pub struct WindowsNetworkStats {
@@ -17,305 +8,135 @@ pub struct WindowsNetworkStats {
     pub bytes_received: u64,
     pub bytes_transmitted: u64,
     pub friendly_name: String,
-    pub active_connections: u32,
+    // pub active_connections: u32,
     pub is_active: bool,
 }
 
 pub fn get_network_interface_stats(show_virtual: bool) -> Result<Vec<WindowsNetworkStats>, Box<dyn std::error::Error>> {
-    // 1. 获取活动连接信息
-    let active_connections = get_active_connections_count().unwrap_or_default();
+    // 使用 sysinfo 获取基础网络接口信息（简单且跨平台）
+    let networks = Networks::new_with_refreshed_list();
     
-    // 2. 使用 GetIfTable2 获取接口统计信息
-    get_iftable2_stats(show_virtual, active_connections)
+    // 使用 netstat2 获取活动连接信息来增强活动检测
+    let active_connections = get_active_connections_by_interface().unwrap_or_default();
+    
+    let mut stats = Vec::new();
+    
+    for (interface_name, network) in &networks {
+        // 基本的虚拟接口过滤
+        if !show_virtual && is_virtual_interface(interface_name) {
+            continue;
+        }
+        
+        // 跳过回环接口
+        if interface_name == "Loopback Pseudo-Interface 1" || interface_name.contains("Loopback") {
+            continue;
+        }
+        
+        let bytes_received = network.total_received();
+        let bytes_transmitted = network.total_transmitted();
+        
+        // 获取此接口的活动连接数
+        let connection_count = active_connections.get(interface_name).unwrap_or(&0);
+        
+        // 改进的活动检测：有流量或有活动连接
+        let is_active = bytes_received > 0 || bytes_transmitted > 0 || *connection_count > 0;
+        
+        // 清理接口名称用于显示
+        let display_name = clean_interface_name(interface_name);
+        
+        stats.push(WindowsNetworkStats {
+            name: display_name.clone(),
+            bytes_received,
+            bytes_transmitted,
+            friendly_name: display_name,
+            // active_connections: *connection_count,
+            is_active,
+        });
+    }
+    
+    Ok(stats)
 }
 
-fn get_active_connections_count() -> Result<HashMap<String, u32>, Box<dyn std::error::Error>> {
+fn get_active_connections_by_interface() -> Result<HashMap<String, u32>, Box<dyn std::error::Error>> {
     let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
     let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
     
     let sockets_info = get_sockets_info(af_flags, proto_flags)?;
-    let mut connection_count = HashMap::new();
+    let mut interface_connections: HashMap<String, u32> = HashMap::new();
+    
+    // 获取网络接口信息用于模式匹配
+    let networks = Networks::new_with_refreshed_list();
     
     for socket in sockets_info {
-        match socket.protocol_socket_info {
-            ProtocolSocketInfo::Tcp(tcp_info) => {
-                let local_addr = tcp_info.local_addr;
-                if !local_addr.is_loopback() && !local_addr.is_unspecified() {
-                    let ip_str = local_addr.to_string();
-                    *connection_count.entry(ip_str).or_insert(0) += 1;
-                }
-            }
-            ProtocolSocketInfo::Udp(udp_info) => {
-                let local_addr = udp_info.local_addr;
-                if !local_addr.is_loopback() && !local_addr.is_unspecified() {
-                    let ip_str = local_addr.to_string();
-                    *connection_count.entry(ip_str).or_insert(0) += 1;
-                }
-            }
-        }
-    }
-    
-    Ok(connection_count)
-}
-
-
-
-// Safe wrapper for accessing interface table entries
-unsafe fn get_interface_row(table: &MIB_IF_TABLE2, index: usize) -> Option<&MIB_IF_ROW2> {
-    if index < table.NumEntries as usize {
-        if index < table.Table.len() {
-            // Direct access for first entry
-            Some(&table.Table[index])
-        } else {
-            // Pointer arithmetic for additional entries in flexible array
-            let base_ptr = table.Table.as_ptr();
-            Some(&*base_ptr.add(index))
-        }
-    } else {
-        None
-    }
-}
-
-fn get_iftable2_stats(show_virtual: bool, active_connections: HashMap<String, u32>) -> Result<Vec<WindowsNetworkStats>, Box<dyn std::error::Error>> {
-    // RAII wrapper for Windows API table management
-    struct InterfaceTable(*mut MIB_IF_TABLE2);
-    
-    impl Drop for InterfaceTable {
-        fn drop(&mut self) {
-            if !self.0.is_null() {
-                unsafe {
-                    FreeMibTable(self.0 as *mut _);
-                }
-            }
-        }
-    }
-    
-    let mut if_table_ptr: *mut MIB_IF_TABLE2 = std::ptr::null_mut();
-    
-    // Get the interface table using Windows API
-    let result = unsafe { GetIfTable2(&mut if_table_ptr) };
-    if result != ERROR_SUCCESS {
-        return Err(format!("GetIfTable2 failed with error: {}", result.0).into());
-    }
-
-    if if_table_ptr.is_null() {
-        return Err("GetIfTable2 returned null table".into());
-    }
-
-    // Wrap in RAII for automatic cleanup
-    let _table_guard = InterfaceTable(if_table_ptr);
-    let table = unsafe { &*if_table_ptr };
-    let mut stats = Vec::new();
-
-    // Process each interface with bounds checking
-    let num_entries = std::cmp::min(table.NumEntries as usize, 50); // Reasonable safety limit
-    
-    for i in 0..num_entries {
-        // Use safe wrapper function for array access
-        let row = unsafe { get_interface_row(table, i) };
-        let row = match row {
-            Some(r) => r,
-            None => continue,
+        let local_addr = match socket.protocol_socket_info {
+            ProtocolSocketInfo::Tcp(tcp_info) => tcp_info.local_addr,
+            ProtocolSocketInfo::Udp(udp_info) => udp_info.local_addr,
         };
         
-        // Get interface name and friendly name - handle errors gracefully
-        let name = match get_interface_name(row) {
-            Ok(n) => n,
-            Err(_) => continue, // Skip if we can't get the name
-        };
-        
-        let friendly_name = match get_interface_friendly_name(row) {
-            Ok(n) => n,
-            Err(_) => String::new(), // Use empty string if friendly name fails
-        };
-        
-        // 计算活动连接数和活跃状态
-        let connection_count = active_connections.values().sum::<u32>();
-        let is_active = row.InOctets > 0 || row.OutOctets > 0 || connection_count > 0;
-        
-        // No filtering - include all interfaces
-        stats.push(WindowsNetworkStats {
-            name: name.clone(),
-            bytes_received: row.InOctets,
-            bytes_transmitted: row.OutOctets,
-            friendly_name: friendly_name.clone(),
-            active_connections: connection_count,
-            is_active,
-        });
-    }
-
-    // Table automatically freed by RAII guard
-    
-    // Filter out unwanted interfaces based on show_virtual parameter
-    let filtered_stats: Vec<WindowsNetworkStats> = stats.into_iter().filter(|stat| {
-            // Always skip loopback interfaces
-            if stat.name.contains("Loopback") || stat.friendly_name.contains("Loopback") {
-                return false;
-            }
-            
-            // Always skip system debug and Windows network stack components
-            if stat.name.contains("Microsoft Kernel Debug") ||
-               stat.name.contains("Teredo") ||
-               stat.name.contains("6to4") ||
-               stat.name.contains("ISATAP") ||
-               stat.name.contains("Microsoft Wi-Fi Direct Virtual Adapter") ||
-               stat.friendly_name.contains("Teredo") {
-                return false;
-            }
-            
-            // Always skip Windows network stack layers (not real interfaces)
-            if stat.name.contains("QoS Packet Scheduler") ||
-               stat.name.contains("WFP") ||
-               stat.name.contains("LightWeight Filter") ||
-               stat.name.contains("Native MAC Layer") ||
-               stat.friendly_name.contains("QoS Packet Scheduler") ||
-               stat.friendly_name.contains("WFP") ||
-               stat.friendly_name.contains("LightWeight Filter") {
-                return false;
-            }
-            
-            // Virtual adapter filtering: skip only if show_virtual is false
-            if !show_virtual {
-                if stat.name.contains("Miniport") ||
-                   stat.name.contains("Virtual") ||
-                   stat.name.contains("TAP-") ||
-                   stat.name.contains("OpenVPN") ||
-                   stat.name.contains("VMware") ||
-                   stat.name.contains("VirtualBox") ||
-                   stat.name.contains("Tailscale") ||
-                   stat.name.contains("WireGuard") ||
-                   stat.friendly_name.contains("Virtual") ||
-                   stat.friendly_name.contains("TAP") ||
-                   stat.friendly_name.contains("VPN") ||
-                   stat.friendly_name.contains("Tailscale") ||
-                   stat.friendly_name.contains("WireGuard") {
-                    return false;
-                }
-            }
-            
-            true
-    }).collect();
-    
-    // Smart deduplication: keep the "best" interface for each friendly name
-    let mut interface_map: std::collections::HashMap<String, WindowsNetworkStats> = std::collections::HashMap::new();
-    
-    for stat in filtered_stats {
-        // Create a key for deduplication - use clean friendly name
-        let key = if !stat.friendly_name.is_empty() {
-            // Remove WFP suffixes for cleaner grouping
-            stat.friendly_name
-                .replace("-WFP Native MAC Layer LightWeight Filter-0000", "")
-                .replace("-WFP Native MAC Layer LightWeight Filter", "")
-                .trim()
-                .to_string()
-        } else {
-            stat.name.clone()
-        };
-        
-        // Skip interfaces with empty keys
-        if key.is_empty() {
-            continue;
-        }
-        
-        // Check if we should keep this interface over any existing one
-        let should_keep = if let Some(existing) = interface_map.get(&key) {
-            // Prefer interfaces with more total traffic, or if same, prefer cleaner names
-            let existing_total = existing.bytes_received + existing.bytes_transmitted;
-            let current_total = stat.bytes_received + stat.bytes_transmitted;
-            
-            if current_total > existing_total {
-                true
-            } else if current_total == existing_total {
-                // If same traffic, prefer the one without WFP in the name
-                !stat.name.contains("WFP") && existing.name.contains("WFP")
+        if !local_addr.is_loopback() && !local_addr.is_unspecified() {
+            // 简化方法：按 IP 地址类型分配到可能的接口
+            let interface_name = if local_addr.is_ipv4() {
+                // 假设 IPv4 地址主要来自以太网或 WiFi
+                find_likely_interface(&networks, "Ethernet")
+                    .or_else(|| find_likely_interface(&networks, "Wi-Fi"))
+                    .or_else(|| find_likely_interface(&networks, "eth"))
+                    .or_else(|| find_likely_interface(&networks, "wlan"))
+                    .unwrap_or_else(|| "Unknown IPv4 Interface".to_string())
             } else {
-                false
-            }
-        } else {
-            // First interface with this name
-            true
-        };
-        
-        if should_keep {
-            // Clean up the display name
-            let cleaned_stat = WindowsNetworkStats {
-                name: key.clone(),
-                bytes_received: stat.bytes_received,
-                bytes_transmitted: stat.bytes_transmitted,
-                friendly_name: key.clone(),
-                active_connections: stat.active_connections,
-                is_active: stat.is_active,
+                // IPv6 可能来自多种接口
+                find_likely_interface(&networks, "Ethernet")
+                    .or_else(|| find_likely_interface(&networks, "Wi-Fi"))
+                    .unwrap_or_else(|| "Unknown IPv6 Interface".to_string())
             };
-            interface_map.insert(key, cleaned_stat);
+            
+            *interface_connections.entry(interface_name).or_insert(0) += 1;
         }
     }
     
-    // Convert back to Vec
-    let unique_stats: Vec<WindowsNetworkStats> = interface_map.into_values().collect();
-    
-    Ok(unique_stats)
+    Ok(interface_connections)
 }
 
-fn get_interface_name(row: &MIB_IF_ROW2) -> Result<String, Box<dyn std::error::Error>> {
-    // Convert the description from wide string to String
-    // Windows uses UTF-16, we need to handle this carefully for Chinese characters
-    
-    // Find the length by looking for null terminator
-    let max_len = std::cmp::min(row.Description.len(), 256); // Reasonable limit
-    let mut len = 0;
-    
-    for i in 0..max_len {
-        if row.Description[i] == 0 {
-            break;
+// 辅助函数：查找可能的接口
+fn find_likely_interface(networks: &Networks, pattern: &str) -> Option<String> {
+    for (name, _) in networks {
+        if name.contains(pattern) {
+            return Some(name.clone());
         }
-        len += 1;
     }
-    
-    if len > 0 {
-        // Safe: We're accessing a slice within bounds of the array
-        let wide_slice = &row.Description[0..len];
-        // Use String::from_utf16_lossy for better Chinese character support
-        match String::from_utf16(wide_slice) {
-            Ok(s) => Ok(s),
-            Err(_) => {
-                // Fallback to lossy conversion
-                let os_string = OsString::from_wide(wide_slice);
-                Ok(os_string.to_string_lossy().to_string())
-            }
-        }
-    } else {
-        Ok("Unknown Interface".to_string())
-    }
+    None
 }
 
-fn get_interface_friendly_name(row: &MIB_IF_ROW2) -> Result<String, Box<dyn std::error::Error>> {
-    // Convert the alias (friendly name) from wide string to String
-    // This is usually the user-friendly name like "以太网", "Wi-Fi" etc.
-    
-    // Find the length by looking for null terminator
-    let max_len = std::cmp::min(row.Alias.len(), 256); // Reasonable limit
-    let mut len = 0;
-    
-    for i in 0..max_len {
-        if row.Alias[i] == 0 {
-            break;
-        }
-        len += 1;
-    }
-    
-    if len > 0 {
-        // Safe: We're accessing a slice within bounds of the array
-        let wide_slice = &row.Alias[0..len];
-        // Use String::from_utf16 for better Chinese character support
-        match String::from_utf16(wide_slice) {
-            Ok(s) => Ok(s),
-            Err(_) => {
-                // Fallback to lossy conversion
-                let os_string = OsString::from_wide(wide_slice);
-                Ok(os_string.to_string_lossy().to_string())
-            }
-        }
-    } else {
-        Ok(String::new())
-    }
+// 判断是否为虚拟接口
+fn is_virtual_interface(name: &str) -> bool {
+    // 常见的虚拟接口模式
+    name.contains("Virtual") ||
+    name.contains("Loopback") ||
+    name.contains("VMware") ||
+    name.contains("VirtualBox") ||
+    name.contains("Hyper-V") ||
+    name.contains("TAP") ||
+    name.contains("TUN") ||
+    name.contains("OpenVPN") ||
+    name.contains("WireGuard") ||
+    name.contains("Tailscale") ||
+    name.contains("Docker") ||
+    name.contains("WSL") ||
+    name.contains("vEthernet") ||
+    name.contains("Teredo") ||
+    name.contains("6to4") ||
+    name.contains("ISATAP")
+}
+
+// 清理接口名称用于显示
+fn clean_interface_name(name: &str) -> String {
+    name
+        // 移除常见的技术后缀
+        .replace("-WFP Native MAC Layer LightWeight Filter-0000", "")
+        .replace("-WFP Native MAC Layer LightWeight Filter", "")
+        .replace("-QoS Packet Scheduler-0000", "")
+        .replace("-QoS Packet Scheduler", "")
+        .replace(" - Miniport Adapter", "")
+        .replace(" - Virtual Switch", "")
+        .trim()
+        .to_string()
 }
