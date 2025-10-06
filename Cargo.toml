@@ -13,4 +13,3 @@ eframe = { version = "0.32", default-features = false, features = ["glow", "defa
 [target.'cfg(target_os = "windows")'.dependencies]
 eframe = { version = "0.32", default-features = false, features = ["wgpu", "default_fonts"] }
 wgpu = { version = "25.0", features = ["dx12", "vulkan"] }
-netstat2 = "0.9"
