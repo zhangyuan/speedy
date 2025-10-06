@@ -12,4 +12,4 @@ eframe = { version = "0.32", default-features = false, features = ["glow", "defa
 
 [target.'cfg(target_os = "windows")'.dependencies]
 eframe = { version = "0.32", default-features = false, features = ["wgpu", "default_fonts"] }
-wgpu = { version = "27", features = ["dx12", "vulkan"] }
+wgpu = { version = "25", features = ["dx12", "vulkan"] }
