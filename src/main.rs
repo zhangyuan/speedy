@@ -9,8 +9,6 @@ struct SpeedyApp {
     network_stats: Vec<NetworkStats>,
     last_update: Instant,
     update_interval: Duration,
-    show_inactive: bool,
-    show_virtual: bool,
     always_on_top: bool,
     first_frame: bool,
 }
@@ -22,8 +20,6 @@ impl Default for SpeedyApp {
             network_stats: Vec::new(),
             last_update: Instant::now(),
             update_interval: Duration::from_secs(1),
-            show_inactive: false,
-            show_virtual: false,
             always_on_top: true,
             first_frame: true,
         }
@@ -40,7 +36,7 @@ impl eframe::App for SpeedyApp {
 
         // Update network stats periodically
         if self.last_update.elapsed() >= self.update_interval {
-            self.network_stats = self.network_monitor.refresh(self.show_virtual);
+            self.network_stats = self.network_monitor.refresh();
             self.last_update = Instant::now();
         }
 
@@ -50,8 +46,6 @@ impl eframe::App for SpeedyApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             // Controls
             ui.horizontal(|ui| {
-                ui.checkbox(&mut self.show_inactive, "Show inactive interfaces");
-                ui.checkbox(&mut self.show_virtual, "Show virtual adapters");
                 ui.separator();
                 if ui.checkbox(&mut self.always_on_top, "Always on top").changed() {
                     // Try to update always-on-top behavior
@@ -84,24 +78,11 @@ impl SpeedyApp {
         use egui::{Color32, RichText};
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for stats in &self.network_stats {
-                // Skip inactive interfaces if not showing them
-                if !self.show_inactive && !stats.is_active {
-                    continue;
-                }
+                for stats in &self.network_stats {
 
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        // Interface name and status
-                        let status_color = if stats.is_active {
-                            Color32::from_rgb(0, 200, 0)
-                        } else {
-                            Color32::from_rgb(128, 128, 128)
-                        };
-
-                        let status_text = if stats.is_active { "[ON]" } else { "[OFF]" };
-                        ui.label(RichText::new(status_text).color(status_color).size(14.0).strong());
-                        
+                        // Interface name
                         ui.label(RichText::new(&stats.name).strong().size(16.0));
                         
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

@@ -9,7 +9,6 @@ pub struct NetworkStats {
     pub bytes_transmitted: u64,
     pub download_speed: f64, // bytes per second
     pub upload_speed: f64,   // bytes per second
-    pub is_active: bool,
 }
 
 pub struct NetworkMonitor {
@@ -28,7 +27,7 @@ impl NetworkMonitor {
         }
     }
 
-    pub fn refresh(&mut self, _show_virtual: bool) -> Vec<NetworkStats> {
+    pub fn refresh(&mut self) -> Vec<NetworkStats> {
         self.networks.refresh();
         let current_time = Instant::now();
         let mut stats = Vec::new();
@@ -63,16 +62,12 @@ impl NetworkMonitor {
                 (current_rx, current_tx, current_time)
             );
 
-            // An interface is active if it has any speed or has ever had traffic.
-            let is_active = download_speed > 0.0 || upload_speed > 0.0 || current_rx > 0 || current_tx > 0;
-
             stats.push(NetworkStats {
                 name: interface_name.clone(),
                 bytes_received: current_rx,
                 bytes_transmitted: current_tx,
                 download_speed,
                 upload_speed,
-                is_active,
             });
         }
         
