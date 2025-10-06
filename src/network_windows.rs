@@ -12,7 +12,7 @@ pub struct WindowsNetworkStats {
     pub is_active: bool,
 }
 
-pub fn get_network_interface_stats(show_virtual: bool) -> Result<Vec<WindowsNetworkStats>, Box<dyn std::error::Error>> {
+pub fn get_network_interface_stats(_show_virtual: bool) -> Result<Vec<WindowsNetworkStats>, Box<dyn std::error::Error>> {
     // 使用 sysinfo 获取基础网络接口信息（简单且跨平台）
     let networks = Networks::new_with_refreshed_list();
     
@@ -22,11 +22,6 @@ pub fn get_network_interface_stats(show_virtual: bool) -> Result<Vec<WindowsNetw
     let mut stats = Vec::new();
     
     for (interface_name, network) in &networks {
-        // 基本的虚拟接口过滤
-        if !show_virtual && is_virtual_interface(interface_name) {
-            continue;
-        }
-        
         // 跳过回环接口
         if interface_name == "Loopback Pseudo-Interface 1" || interface_name.contains("Loopback") {
             continue;
@@ -106,26 +101,7 @@ fn find_likely_interface(networks: &Networks, pattern: &str) -> Option<String> {
     None
 }
 
-// 判断是否为虚拟接口
-fn is_virtual_interface(name: &str) -> bool {
-    // 常见的虚拟接口模式
-    name.contains("Virtual") ||
-    name.contains("Loopback") ||
-    name.contains("VMware") ||
-    name.contains("VirtualBox") ||
-    name.contains("Hyper-V") ||
-    name.contains("TAP") ||
-    name.contains("TUN") ||
-    name.contains("OpenVPN") ||
-    name.contains("WireGuard") ||
-    name.contains("Tailscale") ||
-    name.contains("Docker") ||
-    name.contains("WSL") ||
-    name.contains("vEthernet") ||
-    name.contains("Teredo") ||
-    name.contains("6to4") ||
-    name.contains("ISATAP")
-}
+
 
 // 清理接口名称用于显示
 fn clean_interface_name(name: &str) -> String {
