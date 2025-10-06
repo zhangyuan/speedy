@@ -77,6 +77,17 @@ impl SpeedyApp {
     fn show_network_interfaces(&self, ui: &mut egui::Ui) {
         use egui::{Color32, RichText};
 
+        // helper to pick color for a speed value
+        let speed_color = |value: f64| -> Color32 {
+            if value > 1024.0 * 1024.0 {
+                Color32::from_rgb(0, 200, 0)
+            } else if value > 1024.0 {
+                Color32::from_rgb(200, 150, 0)
+            } else {
+                Color32::from_rgb(80, 80, 80)
+            }
+        };
+
         egui::ScrollArea::vertical().show(ui, |ui| {
                 for stats in &self.network_stats {
 
@@ -102,13 +113,7 @@ impl SpeedyApp {
                             ui.vertical(|ui| {
                                 ui.label(RichText::new("Download").color(Color32::from_rgb(20, 100, 200)));
                                 let speed_text = format_bytes(stats.download_speed);
-                                let speed_color = if stats.download_speed > 1024.0 * 1024.0 { // > 1 MB/s
-                                    Color32::from_rgb(0, 200, 0)  // 深绿色，在浅色背景下清晰
-                                } else if stats.download_speed > 1024.0 { // > 1 KB/s
-                                    Color32::from_rgb(200, 150, 0)  // 深黄色，在浅色背景下清晰
-                                } else {
-                                    Color32::from_rgb(80, 80, 80)  // 深灰色，替代白色
-                                };
+                                let speed_color = speed_color(stats.download_speed);
                                 ui.label(RichText::new(speed_text).color(speed_color).size(18.0).strong());
                             });
                         });
@@ -120,13 +125,7 @@ impl SpeedyApp {
                             ui.vertical(|ui| {
                                 ui.label(RichText::new("Upload").color(Color32::from_rgb(200, 100, 20)));
                                 let speed_text = format_bytes(stats.upload_speed);
-                                let speed_color = if stats.upload_speed > 1024.0 * 1024.0 { // > 1 MB/s
-                                    Color32::from_rgb(0, 200, 0)  // 深绿色，在浅色背景下清晰
-                                } else if stats.upload_speed > 1024.0 { // > 1 KB/s
-                                    Color32::from_rgb(200, 150, 0)  // 深黄色，在浅色背景下清晰
-                                } else {
-                                    Color32::from_rgb(80, 80, 80)  // 深灰色，替代白色
-                                };
+                                let speed_color = speed_color(stats.upload_speed);
                                 ui.label(RichText::new(speed_text).color(speed_color).size(18.0).strong());
                             });
                         });

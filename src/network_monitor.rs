@@ -27,6 +27,18 @@ impl NetworkMonitor {
         }
     }
 
+    fn compute_speeds(&self, interface: &str, current_rx: u64, current_tx: u64, current_time: Instant) -> (f64, f64) {
+        if let Some((prev_rx, prev_tx, prev_time)) = self.previous_stats.get(interface) {
+            let duration = current_time.duration_since(*prev_time).as_secs_f64();
+            if duration > 0.0 {
+                let download_speed = (current_rx.saturating_sub(*prev_rx) as f64) / duration;
+                let upload_speed = (current_tx.saturating_sub(*prev_tx) as f64) / duration;
+                return (download_speed, upload_speed);
+            }
+        }
+        (0.0, 0.0)
+    }
+
     pub fn refresh(&mut self) -> Vec<NetworkStats> {
         self.networks.refresh();
         let current_time = Instant::now();
@@ -41,20 +53,7 @@ impl NetworkMonitor {
                 continue;
             }
 
-            let (download_speed, upload_speed) = if let Some((prev_rx, prev_tx, prev_time)) = 
-                self.previous_stats.get(interface_name) {
-                
-                let duration = current_time.duration_since(*prev_time).as_secs_f64();
-                if duration > 0.0 {
-                    let download_speed = (current_rx.saturating_sub(*prev_rx) as f64) / duration;
-                    let upload_speed = (current_tx.saturating_sub(*prev_tx) as f64) / duration;
-                    (download_speed, upload_speed)
-                } else {
-                    (0.0, 0.0)
-                }
-            } else {
-                (0.0, 0.0)
-            };
+            let (download_speed, upload_speed) = self.compute_speeds(interface_name, current_rx, current_tx, current_time);
 
             // Update previous stats for the next refresh
             self.previous_stats.insert(
