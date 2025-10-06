@@ -34,17 +34,35 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-target-
 
       - name: Setup Rust (stable)
-        uses: rust-lang/setup-rust@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          rust-version: stable
+          components: rustfmt,clippy
 
       - name: Show rustc and cargo versions
         run: |
           rustc --version
           cargo --version
 
+      - name: Cargo clippy
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Cargo fmt
+        run: cargo fmt --check
       - name: Build (debug)
         run: cargo build --locked --verbose
 
       - name: Build (release)
         run: cargo build --locked --release --verbose
+
+      - name: Upload release binary (Linux)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: speedy-linux
+          path: target/release/speedy
+
+      - name: Upload release binary (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: speedy-windows
+          path: target\release\speedy.exe

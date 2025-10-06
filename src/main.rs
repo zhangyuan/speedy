@@ -324,12 +324,12 @@ fn main() -> Result<(), eframe::Error> {
 
             // Initialize app and restore saved settings (sort mode)
             let mut app = SpeedyApp::default();
-            if let Some(storage) = &cc.storage {
-                if let Some(val) = storage.get_string(STORAGE_KEY) {
-                    app.sort_mode = match val.as_str() {
-                        "Download" => SortMode::Download,
-                        _ => SortMode::Name,
-                    }
+            if let Some(storage) = &cc.storage
+                && let Some(val) = storage.get_string(STORAGE_KEY)
+            {
+                app.sort_mode = match val.as_str() {
+                    "Download" => SortMode::Download,
+                    _ => SortMode::Name,
                 }
             }
 
