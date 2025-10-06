@@ -1,4 +1,4 @@
-name: build
+name: Build
 
 on:
   push:
@@ -45,13 +45,15 @@ jobs:
 
       - name: Cargo clippy
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
       - name: Cargo fmt
         run: cargo fmt --check
+
       - name: Build (debug)
-        run: cargo build --locked --verbose
+        run: cargo build --locked
 
       - name: Build (release)
-        run: cargo build --locked --release --verbose
+        run: cargo build --locked --release
 
       - name: Upload release binary (Linux)
         if: runner.os == 'Linux'
