@@ -39,19 +39,17 @@ fn get_active_connections_count() -> Result<HashMap<String, u32>, Box<dyn std::e
     for socket in sockets_info {
         match socket.protocol_socket_info {
             ProtocolSocketInfo::Tcp(tcp_info) => {
-                if let Some(local_addr) = tcp_info.local_addr {
-                    if !local_addr.ip().is_loopback() && !local_addr.ip().is_unspecified() {
-                        let ip_str = local_addr.ip().to_string();
-                        *connection_count.entry(ip_str).or_insert(0) += 1;
-                    }
+                let local_addr = tcp_info.local_addr;
+                if !local_addr.is_loopback() && !local_addr.is_unspecified() {
+                    let ip_str = local_addr.to_string();
+                    *connection_count.entry(ip_str).or_insert(0) += 1;
                 }
             }
             ProtocolSocketInfo::Udp(udp_info) => {
-                if let Some(local_addr) = udp_info.local_addr {
-                    if !local_addr.ip().is_loopback() && !local_addr.ip().is_unspecified() {
-                        let ip_str = local_addr.ip().to_string();
-                        *connection_count.entry(ip_str).or_insert(0) += 1;
-                    }
+                let local_addr = udp_info.local_addr;
+                if !local_addr.is_loopback() && !local_addr.is_unspecified() {
+                    let ip_str = local_addr.to_string();
+                    *connection_count.entry(ip_str).or_insert(0) += 1;
                 }
             }
         }
@@ -321,4 +319,3 @@ fn get_interface_friendly_name(row: &MIB_IF_ROW2) -> Result<String, Box<dyn std:
         Ok(String::new())
     }
 }
-
