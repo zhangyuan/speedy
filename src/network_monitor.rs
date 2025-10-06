@@ -97,8 +97,8 @@ impl NetworkMonitor {
                         (current_rx, current_tx, current_time)
                     );
 
-                    // Consider interface active if it has received or transmitted data
-                    let is_active = current_rx > 0 || current_tx > 0;
+                    // Use the enhanced activity detection from netstat2
+                    let is_active = stat.is_active;
 
                     stats.push(NetworkStats {
                         name: interface_name,

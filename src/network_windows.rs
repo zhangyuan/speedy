@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::os::windows::ffi::OsStringExt;
+use std::collections::HashMap;
 use windows::{
     Win32::Foundation::ERROR_SUCCESS,
     Win32::NetworkManagement::IpHelper::{
@@ -7,17 +8,56 @@ use windows::{
     },
 };
 
+// 使用 netstat2 获取活动连接信息
+use netstat2::{get_sockets_info, AddressFamilyFlags, ProtocolFlags, ProtocolSocketInfo};
+
 #[derive(Debug, Clone)]
 pub struct WindowsNetworkStats {
     pub name: String,
     pub bytes_received: u64,
     pub bytes_transmitted: u64,
     pub friendly_name: String,
+    pub active_connections: u32,
+    pub is_active: bool,
 }
 
 pub fn get_network_interface_stats(show_virtual: bool) -> Result<Vec<WindowsNetworkStats>, Box<dyn std::error::Error>> {
-    // Use GetIfTable2 with filtering based on show_virtual parameter
-    get_iftable2_stats(show_virtual)
+    // 1. 获取活动连接信息
+    let active_connections = get_active_connections_count().unwrap_or_default();
+    
+    // 2. 使用 GetIfTable2 获取接口统计信息
+    get_iftable2_stats(show_virtual, active_connections)
+}
+
+fn get_active_connections_count() -> Result<HashMap<String, u32>, Box<dyn std::error::Error>> {
+    let af_flags = AddressFamilyFlags::IPV4 | AddressFamilyFlags::IPV6;
+    let proto_flags = ProtocolFlags::TCP | ProtocolFlags::UDP;
+    
+    let sockets_info = get_sockets_info(af_flags, proto_flags)?;
+    let mut connection_count = HashMap::new();
+    
+    for socket in sockets_info {
+        match socket.protocol_socket_info {
+            ProtocolSocketInfo::Tcp(tcp_info) => {
+                if let Some(local_addr) = tcp_info.local_addr {
+                    if !local_addr.ip().is_loopback() && !local_addr.ip().is_unspecified() {
+                        let ip_str = local_addr.ip().to_string();
+                        *connection_count.entry(ip_str).or_insert(0) += 1;
+                    }
+                }
+            }
+            ProtocolSocketInfo::Udp(udp_info) => {
+                if let Some(local_addr) = udp_info.local_addr {
+                    if !local_addr.ip().is_loopback() && !local_addr.ip().is_unspecified() {
+                        let ip_str = local_addr.ip().to_string();
+                        *connection_count.entry(ip_str).or_insert(0) += 1;
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(connection_count)
 }
 
 
@@ -38,7 +78,7 @@ unsafe fn get_interface_row(table: &MIB_IF_TABLE2, index: usize) -> Option<&MIB_
     }
 }
 
-fn get_iftable2_stats(show_virtual: bool) -> Result<Vec<WindowsNetworkStats>, Box<dyn std::error::Error>> {
+fn get_iftable2_stats(show_virtual: bool, active_connections: HashMap<String, u32>) -> Result<Vec<WindowsNetworkStats>, Box<dyn std::error::Error>> {
     // RAII wrapper for Windows API table management
     struct InterfaceTable(*mut MIB_IF_TABLE2);
     
@@ -91,12 +131,18 @@ fn get_iftable2_stats(show_virtual: bool) -> Result<Vec<WindowsNetworkStats>, Bo
             Err(_) => String::new(), // Use empty string if friendly name fails
         };
         
+        // 计算活动连接数和活跃状态
+        let connection_count = active_connections.values().sum::<u32>();
+        let is_active = row.InOctets > 0 || row.OutOctets > 0 || connection_count > 0;
+        
         // No filtering - include all interfaces
         stats.push(WindowsNetworkStats {
             name: name.clone(),
             bytes_received: row.InOctets,
             bytes_transmitted: row.OutOctets,
             friendly_name: friendly_name.clone(),
+            active_connections: connection_count,
+            is_active,
         });
     }
 
@@ -199,6 +245,8 @@ fn get_iftable2_stats(show_virtual: bool) -> Result<Vec<WindowsNetworkStats>, Bo
                 bytes_received: stat.bytes_received,
                 bytes_transmitted: stat.bytes_transmitted,
                 friendly_name: key.clone(),
+                active_connections: stat.active_connections,
+                is_active: stat.is_active,
             };
             interface_map.insert(key, cleaned_stat);
         }
