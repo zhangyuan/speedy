@@ -2,8 +2,8 @@ mod network_monitor;
 
 use eframe::egui;
 use network_monitor::{NetworkMonitor, NetworkStats, format_bytes, format_total_bytes};
-use std::time::{Duration, Instant};
 use std::cmp::Ordering;
+use std::time::{Duration, Instant};
 const STORAGE_KEY: &str = "speedy.sort_mode";
 
 struct SpeedyApp {
@@ -193,7 +193,10 @@ impl SpeedyApp {
                                 ui.add_sized(
                                     [SPEED_MIN_W, SPEED_H],
                                     egui::Label::new(
-                                        RichText::new(speed_text).color(speed_color).size(18.0).strong(),
+                                        RichText::new(speed_text)
+                                            .color(speed_color)
+                                            .size(18.0)
+                                            .strong(),
                                     ),
                                 );
                             });
@@ -215,7 +218,10 @@ impl SpeedyApp {
                                 ui.add_sized(
                                     [SPEED_MIN_W, SPEED_H],
                                     egui::Label::new(
-                                        RichText::new(speed_text).color(speed_color).size(18.0).strong(),
+                                        RichText::new(speed_text)
+                                            .color(speed_color)
+                                            .size(18.0)
+                                            .strong(),
                                     ),
                                 );
                             });
@@ -246,7 +252,13 @@ fn main() -> Result<(), eframe::Error> {
         let always_label = "Always on top".len();
         let total_label = "Total interfaces: 999".len(); // reserve space for counts
 
-        let char_count = search_label + search_box_chars + sort_label + name_label + download_label + always_label + total_label;
+        let char_count = search_label
+            + search_box_chars
+            + sort_label
+            + name_label
+            + download_label
+            + always_label
+            + total_label;
 
         // Add padding for separators, margins and icon area
         let padding = 140.0_f32;
