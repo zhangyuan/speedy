@@ -30,7 +30,9 @@ impl eframe::App for SpeedyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Apply always-on-top on first frame (since builder settings don't work reliably)
         if self.first_frame && self.always_on_top {
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                egui::WindowLevel::AlwaysOnTop,
+            ));
             self.first_frame = false;
         }
 
@@ -47,14 +49,17 @@ impl eframe::App for SpeedyApp {
             // Controls
             ui.horizontal(|ui| {
                 ui.separator();
-                if ui.checkbox(&mut self.always_on_top, "Always on top").changed() {
+                if ui
+                    .checkbox(&mut self.always_on_top, "Always on top")
+                    .changed()
+                {
                     // Try to update always-on-top behavior
                     ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
                         if self.always_on_top {
                             egui::WindowLevel::AlwaysOnTop
                         } else {
                             egui::WindowLevel::Normal
-                        }
+                        },
                     ));
                 }
                 ui.separator();
@@ -89,15 +94,15 @@ impl SpeedyApp {
         };
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-                for stats in &self.network_stats {
-
+            for stats in &self.network_stats {
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         // Interface name
                         ui.label(RichText::new(&stats.name).strong().size(16.0));
-                        
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.label(format!("Total: Down:{} Up:{}", 
+                            ui.label(format!(
+                                "Total: Down:{} Up:{}",
                                 format_total_bytes(stats.bytes_received),
                                 format_total_bytes(stats.bytes_transmitted)
                             ));
@@ -111,10 +116,18 @@ impl SpeedyApp {
                         // Download speed
                         ui.group(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(RichText::new("Download").color(Color32::from_rgb(20, 100, 200)));
+                                ui.label(
+                                    RichText::new("Download")
+                                        .color(Color32::from_rgb(20, 100, 200)),
+                                );
                                 let speed_text = format_bytes(stats.download_speed);
                                 let speed_color = speed_color(stats.download_speed);
-                                ui.label(RichText::new(speed_text).color(speed_color).size(18.0).strong());
+                                ui.label(
+                                    RichText::new(speed_text)
+                                        .color(speed_color)
+                                        .size(18.0)
+                                        .strong(),
+                                );
                             });
                         });
 
@@ -123,10 +136,17 @@ impl SpeedyApp {
                         // Upload speed
                         ui.group(|ui| {
                             ui.vertical(|ui| {
-                                ui.label(RichText::new("Upload").color(Color32::from_rgb(200, 100, 20)));
+                                ui.label(
+                                    RichText::new("Upload").color(Color32::from_rgb(200, 100, 20)),
+                                );
                                 let speed_text = format_bytes(stats.upload_speed);
                                 let speed_color = speed_color(stats.upload_speed);
-                                ui.label(RichText::new(speed_text).color(speed_color).size(18.0).strong());
+                                ui.label(
+                                    RichText::new(speed_text)
+                                        .color(speed_color)
+                                        .size(18.0)
+                                        .strong(),
+                                );
                             });
                         });
                     });
@@ -158,7 +178,7 @@ fn main() -> Result<(), eframe::Error> {
             let mut fonts = egui::FontDefinitions::default();
             #[cfg(not(target_os = "windows"))]
             let fonts = egui::FontDefinitions::default();
-            
+
             // Add system fonts that support Chinese characters
             #[cfg(target_os = "windows")]
             {
@@ -168,9 +188,11 @@ fn main() -> Result<(), eframe::Error> {
                         "Microsoft YaHei".to_owned(),
                         egui::FontData::from_owned(font_data).into(),
                     );
-                    
+
                     // Set as primary font for better Chinese support
-                    fonts.families.get_mut(&egui::FontFamily::Proportional)
+                    fonts
+                        .families
+                        .get_mut(&egui::FontFamily::Proportional)
                         .unwrap()
                         .insert(0, "Microsoft YaHei".to_owned());
                 } else if let Ok(font_data) = std::fs::read("C:\\Windows\\Fonts\\simhei.ttf") {
@@ -178,15 +200,17 @@ fn main() -> Result<(), eframe::Error> {
                         "SimHei".to_owned(),
                         egui::FontData::from_owned(font_data).into(),
                     );
-                    
-                    fonts.families.get_mut(&egui::FontFamily::Proportional)
+
+                    fonts
+                        .families
+                        .get_mut(&egui::FontFamily::Proportional)
                         .unwrap()
                         .insert(0, "SimHei".to_owned());
                 }
             }
-            
+
             cc.egui_ctx.set_fonts(fonts);
-            
+
             Ok(Box::<SpeedyApp>::default())
         }),
     )
