@@ -1,5 +1,7 @@
 # Speedy - Network Speed Monitor
 
+[中文文档](README_zh-CN.md) | [English](README.md)
+
 ## Overview
 
 Speedy is a network speed monitoring tool built with Rust and the egui framework. It can display the status and network transmission rates of all network interfaces in the system in real-time.
@@ -13,9 +15,15 @@ Speedy is a network speed monitoring tool built with Rust and the egui framework
 - **Sorting Function**: Sort by name or download speed
 - **Always on Top**: Support window always-on-top display for convenient real-time monitoring
 
-## Screenshot
+## Screenshots
+
+### macOS
 
 ![Speedy Network Monitor](assets/macos.png)
+
+### Window
+
+![Speedy Network Monitor](assets/windows.png)
 
 ## Usage
 
