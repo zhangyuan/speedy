@@ -72,12 +72,19 @@ jobs:
       - name: Create macOS app bundle
         if: runner.os == 'macOS'
         run: |
-          mkdir -p Speedy.app/Contents/MacOS
+          cp -r .github/app-bundle/Speedy.app .
           cp target/release/speedy Speedy.app/Contents/MacOS/
+          rm -f Speedy.app/Contents/MacOS/README.txt
+
+      - name: Create distributable zip
+        if: runner.os == 'macOS'
+        run: |
+          zip -r Speedy-macOS.zip Speedy.app
 
       - name: Upload macOS app bundle
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
           name: speedy-macos
-          path: Speedy.app
+          path: Speedy-macOS.zip
+          retention-days: 1
