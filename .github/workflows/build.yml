@@ -68,3 +68,16 @@ jobs:
         with:
           name: speedy-windows
           path: target\release\speedy.exe
+
+      - name: Create macOS app bundle
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p Speedy.app/Contents/MacOS
+          cp target/release/speedy Speedy.app/Contents/MacOS/
+
+      - name: Upload macOS app bundle
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: speedy-macos
+          path: Speedy.app
