@@ -12,7 +12,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+          - os: windows-latest
+          - os: macos-latest
+          - os: macos-11
+            arch: x86_64
 
     steps:
       - name: Checkout repository
@@ -24,14 +29,14 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Cache cargo target
         uses: actions/cache@v4
         with:
           path: target
-          key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: ${{ runner.os }}-cargo-target-
+          key: ${{ runner.os }}-${{ runner.arch }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-cargo-target-
 
       - name: Setup Rust (stable)
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -53,7 +58,8 @@ jobs:
         run: cargo build --locked
 
       - name: Build (release)
-        run: cargo build --locked --release
+        run: |
+          cargo build --locked --release
 
       - name: Upload release binary (Linux)
         if: runner.os == 'Linux'
@@ -69,22 +75,18 @@ jobs:
           name: speedy-windows
           path: target\release\speedy.exe
 
-      - name: Create macOS app bundle
+      - name: Create macOS app bundle and distributable zip
         if: runner.os == 'macOS'
         run: |
-          cp -r .github/app-bundle/Speedy.app .
+          cp -r .github/app-bundle/Speedy.app Speedy.app
           cp target/release/speedy Speedy.app/Contents/MacOS/
           rm -f Speedy.app/Contents/MacOS/README.txt
-
-      - name: Create distributable zip
-        if: runner.os == 'macOS'
-        run: |
-          zip -r Speedy-macOS.zip Speedy.app
+          zip -r Speedy-macOS-${{ matrix.arch }}.zip Speedy.app
 
       - name: Upload macOS app bundle
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: speedy-macos
-          path: Speedy-macOS.zip
+          name: Speedy-macOS-${{ matrix.arch }}
+          path: Speedy-macOS-${{ matrix.arch }}.zip
           retention-days: 1
